@@ -5,9 +5,97 @@
 """
 
 import streamlit as st
-import pandas as pd
-from datetime import datetime
+import re
 from main_force_batch_db import batch_db
+
+
+def _build_stock_rows(history_records):
+    """将批次历史展开为单只股票记录"""
+    rows = []
+    for record in history_records:
+        analysis_time = record.get('analysis_date', '')
+        batch_id = record.get('id')
+        results = record.get('results', []) or []
+        for result in results:
+            stock_info = result.get('stock_info', {}) or {}
+            final_decision = result.get('final_decision', {}) or {}
+            symbol = str(result.get('symbol') or stock_info.get('symbol') or '')
+            name = str(stock_info.get('name') or stock_info.get('股票名称') or '')
+            data_cycle = (
+                result.get('period')
+                or stock_info.get('period')
+                or final_decision.get('investment_period')
+                or final_decision.get('data_cycle')
+                or '1y'
+            )
+            rating = final_decision.get('rating') or final_decision.get('investment_rating') or '未知'
+            rows.append({
+                'batch_id': batch_id,
+                'symbol': symbol,
+                'name': name,
+                'analysis_time': analysis_time,
+                'data_cycle': str(data_cycle),
+                'rating': str(rating),
+                'success': bool(result.get('success', False)),
+                'result': result,
+                'record': record
+            })
+    rows.sort(key=lambda x: x.get('analysis_time', ''), reverse=True)
+    return rows
+
+
+def _add_to_monitor_from_result(result):
+    """根据分析结果加入监测列表"""
+    stock_info = result.get('stock_info', {}) or {}
+    final_decision = result.get('final_decision', {}) or {}
+    symbol = str(result.get('symbol') or stock_info.get('symbol') or '')
+    name = str(stock_info.get('name') or stock_info.get('股票名称') or '')
+    rating = final_decision.get('rating', '未知')
+
+    entry_range = final_decision.get('entry_range', '')
+    entry_min, entry_max = None, None
+    if entry_range and isinstance(entry_range, str) and "-" in entry_range:
+        try:
+            parts = entry_range.split("-")
+            entry_min = float(parts[0].strip())
+            entry_max = float(parts[1].strip())
+        except Exception:
+            pass
+
+    take_profit = None
+    take_profit_str = final_decision.get('take_profit', '')
+    if take_profit_str:
+        try:
+            numbers = re.findall(r'\d+\.?\d*', str(take_profit_str))
+            if numbers:
+                take_profit = float(numbers[0])
+        except Exception:
+            pass
+
+    stop_loss = None
+    stop_loss_str = final_decision.get('stop_loss', '')
+    if stop_loss_str:
+        try:
+            numbers = re.findall(r'\d+\.?\d*', str(stop_loss_str))
+            if numbers:
+                stop_loss = float(numbers[0])
+        except Exception:
+            pass
+
+    from monitor_db import monitor_db
+
+    entry_range_dict = {}
+    if entry_min and entry_max:
+        entry_range_dict = {"min": entry_min, "max": entry_max}
+
+    monitor_db.add_monitored_stock(
+        symbol=symbol,
+        name=name,
+        rating=rating,
+        entry_range=entry_range_dict if entry_range_dict else None,
+        take_profit=take_profit,
+        stop_loss=stop_loss
+    )
 
 
 def display_batch_history():
@@ -48,143 +136,88 @@ def display_batch_history():
     # 获取历史记录
     try:
         history_records = batch_db.get_all_history(limit=50)
-        
+
         if not history_records:
             st.info("📝 暂无批量分析历史记录")
             return
-        
-        st.markdown(f"### 📋 最近 {len(history_records)} 条记录")
-        
-        # 显示每条记录
-        for idx, record in enumerate(history_records):
-            with st.expander(
-                f"🔍 {record['analysis_date']} | "
-                f"共{record['batch_count']}只 | "
-                f"成功{record['success_count']}只 | "
-                f"{record['analysis_mode']} | "
-                f"耗时{record['total_time']/60:.1f}分钟",
-                expanded=(idx == 0)  # 第一条默认展开
-            ):
-                # 记录基本信息
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.write(f"**分析时间**: {record['analysis_date']}")
-                with col2:
-                    st.write(f"**分析模式**: {record['analysis_mode']}")
-                with col3:
-                    st.write(f"**总数**: {record['batch_count']} 只")
-                with col4:
-                    st.write(f"**耗时**: {record['total_time']/60:.1f} 分钟")
-                
-                col5, col6, col7, col8 = st.columns(4)
-                with col5:
-                    st.metric("✅ 成功", record['success_count'])
-                with col6:
-                    st.metric("❌ 失败", record['failed_count'])
-                with col7:
-                    success_rate = (record['success_count'] / record['batch_count'] * 100) if record['batch_count'] > 0 else 0
-                    st.metric("成功率", f"{success_rate:.1f}%")
-                with col8:
-                    avg_time = record['total_time'] / record['batch_count'] if record['batch_count'] > 0 else 0
-                    st.metric("平均耗时", f"{avg_time:.1f}秒")
-                
-                st.markdown("---")
-                
-                # 成功的股票
-                results = record.get('results', [])
-                success_results = [r for r in results if r.get('success', False)]
-                failed_results = [r for r in results if not r.get('success', False)]
-                
-                if success_results:
-                    st.markdown(f"#### ✅ 成功分析的股票 ({len(success_results)} 只)")
-                    
-                    # 构建结果表格
-                    table_data = []
-                    for r in success_results:
-                        stock_info = r.get('stock_info', {})
-                        final_decision = r.get('final_decision', {})
-                        
-                        table_data.append({
-                            '代码': r.get('symbol', 'N/A'),
-                            '名称': stock_info.get('name', stock_info.get('股票名称', 'N/A')),
-                            '评级': final_decision.get('rating', final_decision.get('investment_rating', 'N/A')),
-                            '信心度': final_decision.get('confidence_level', 'N/A'),
-                            '进场区间': final_decision.get('entry_range', 'N/A'),
-                            '止盈位': final_decision.get('take_profit', 'N/A'),
-                            '止损位': final_decision.get('stop_loss', 'N/A')
-                        })
-                    
-                    df = pd.DataFrame(table_data)
-                    
-                    # 类型统一，避免Arrow序列化错误
-                    numeric_cols = ['信心度', '止盈位', '止损位']
-                    for col in numeric_cols:
-                        if col in df.columns:
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
 
-                    text_cols = ['代码', '名称', '评级', '进场区间']
-                    for col in text_cols:
-                        if col in df.columns:
-                            df[col] = df[col].astype(str)
-                    
-                    st.dataframe(df, width='content')
-                    
-                    # 显示详细分析（可展开）
-                    with st.expander("📊 查看详细分析报告"):
-                        for r in success_results:
-                            stock_info = r.get('stock_info', {})
-                            final_decision = r.get('final_decision', {})
-                            
-                            st.markdown(f"### {r.get('symbol', 'N/A')} - {stock_info.get('name', stock_info.get('股票名称', 'N/A'))}")
-                            
-                            # 投资建议
-                            st.markdown("#### 💡 投资建议")
-                            st.write(final_decision.get('operation_advice', final_decision.get('investment_advice', '无')))
-                            
-                            # 风险提示
-                            st.markdown("#### ⚠️ 风险提示")
-                            st.write(final_decision.get('risk_warning', '无'))
-                            
-                            st.markdown("---")
-                
-                # 失败的股票
-                if failed_results:
-                    st.markdown(f"#### ❌ 分析失败的股票 ({len(failed_results)} 只)")
-                    
-                    fail_data = []
-                    for r in failed_results:
-                        fail_data.append({
-                            '代码': r.get('symbol', 'N/A'),
-                            '错误原因': r.get('error', '未知错误')
-                        })
-                    
-                    df_fail = pd.DataFrame(fail_data)
-                    st.dataframe(df_fail, width='content')
-                
-                # 操作按钮
-                col_del, col_reload = st.columns([1, 1])
-                with col_del:
-                    if st.button(f"🗑️ 删除此记录", key=f"del_{record['id']}"):
-                        if batch_db.delete_record(record['id']):
-                            st.success("✅ 删除成功")
-                            st.rerun()
-                        else:
-                            st.error("❌ 删除失败")
-                
-                with col_reload:
-                    if st.button(f"🔄 加载到当前结果", key=f"reload_{record['id']}"):
-                        # 将历史记录加载到session_state
-                        st.session_state.main_force_batch_results = {
-                            "results": record['results'],
-                            "total": record['batch_count'],
-                            "success": record['success_count'],
-                            "failed": record['failed_count'],
-                            "elapsed_time": record['total_time'],
-                            "analysis_mode": record['analysis_mode']
-                        }
-                        st.session_state.main_force_view_history = False
-                        st.success("✅ 已加载到当前结果，返回主页查看")
+        stock_rows = _build_stock_rows(history_records)
+        st.markdown(f"### 📋 共找到 {len(stock_rows)} 条分析记录")
+
+        action_col1, action_col2 = st.columns([1, 5])
+        with action_col1:
+            if st.button("🗑️ 清空历史记录", key="clear_all_history_btn", type="secondary"):
+                deleted_count = batch_db.clear_all_history()
+                st.success(f"✅ 已清空历史记录（删除 {deleted_count} 条批次）")
+                st.rerun()
+
+        st.markdown("---")
+
+        # 表头
+        h1, h2, h3, h4, h5, h6 = st.columns([1.2, 1.8, 2.2, 1.0, 1.1, 2.2])
+        h1.markdown("**股票代码**")
+        h2.markdown("**股票名称**")
+        h3.markdown("**分析时间**")
+        h4.markdown("**数据周期**")
+        h5.markdown("**投资评级**")
+        h6.markdown("**操作**")
+        st.markdown("---")
+
+        for idx, row in enumerate(stock_rows):
+            c1, c2, c3, c4, c5, c6 = st.columns([1.2, 1.8, 2.2, 1.0, 1.1, 2.2])
+            c1.write(row.get('symbol') or "N/A")
+            c2.write(row.get('name') or "N/A")
+            c3.write(row.get('analysis_time') or "N/A")
+            c4.write(row.get('data_cycle') or "N/A")
+            c5.write(row.get('rating') or "N/A")
+
+            op1, op2, op3 = c6.columns([1, 1, 1])
+
+            with op1:
+                if st.button("详情", key=f"detail_{row['batch_id']}_{idx}"):
+                    st.session_state[f"show_detail_{row['batch_id']}_{idx}"] = True
+
+            with op2:
+                if st.button("监测", key=f"monitor_history_{row['batch_id']}_{idx}"):
+                    try:
+                        _add_to_monitor_from_result(row['result'])
+                        st.success(f"✅ {row.get('symbol', '')} 已加入监测列表")
+                    except Exception as e:
+                        st.error(f"❌ 加入监测失败: {str(e)}")
+
+            with op3:
+                if st.button("删除", key=f"delete_history_{row['batch_id']}_{idx}"):
+                    if batch_db.delete_stock_record(row['batch_id'], row['symbol']):
+                        st.success("✅ 删除成功")
                         st.rerun()
+                    else:
+                        st.error("❌ 删除失败")
+
+            if st.session_state.get(f"show_detail_{row['batch_id']}_{idx}", False):
+                result = row.get('result', {})
+                final_decision = result.get('final_decision', {}) or {}
+                stock_info = result.get('stock_info', {}) or {}
+                with st.expander(f"📊 {row.get('symbol', '')} - {row.get('name', '')} 详情", expanded=True):
+                    d1, d2, d3 = st.columns(3)
+                    d1.metric("投资评级", final_decision.get('rating', 'N/A'))
+                    d2.metric("信心度", final_decision.get('confidence_level', 'N/A'))
+                    d3.metric("目标价", final_decision.get('target_price', 'N/A'))
+
+                    d4, d5 = st.columns(2)
+                    d4.metric("进场区间", final_decision.get('entry_range', 'N/A'))
+                    d5.metric("止盈/止损", f"{final_decision.get('take_profit', 'N/A')} / {final_decision.get('stop_loss', 'N/A')}")
+
+                    st.markdown("**投资建议**")
+                    st.info(final_decision.get('operation_advice', final_decision.get('investment_advice', '暂无建议')))
+
+                    if not result.get('success', False):
+                        st.warning(f"分析失败原因: {result.get('error', '未知错误')}")
+
+                    if stock_info:
+                        st.markdown("**股票信息**")
+                        st.json(stock_info)
+
+                st.markdown("---")
     
     except Exception as e:
         st.error(f"❌ 获取历史记录失败: {str(e)}")

@@ -145,6 +145,16 @@ class StockAnalysisDatabase:
         conn.close()
         
         return cursor.rowcount > 0
+
+    def clear_all_records(self):
+        """清空全部分析记录"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM analysis_records')
+        deleted_count = cursor.rowcount if cursor.rowcount is not None else 0
+        conn.commit()
+        conn.close()
+        return deleted_count
     
     def get_record_count(self):
         """获取记录总数"""

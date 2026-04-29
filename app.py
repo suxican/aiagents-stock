@@ -1753,48 +1753,71 @@ def display_history_records():
         st.warning("🔍 未找到匹配的记录")
         return
 
-    # 显示记录列表
+    # 清空历史记录
+    if "confirm_clear_history" not in st.session_state:
+        st.session_state.confirm_clear_history = False
+
+    action_col1, action_col2 = st.columns([1, 5])
+    with action_col1:
+        if not st.session_state.confirm_clear_history:
+            if st.button("🗑️ 清空历史记录", key="clear_all_history_records", type="secondary"):
+                st.session_state.confirm_clear_history = True
+                st.rerun()
+        else:
+            st.warning("⚠️ 确认要清空全部历史记录吗？该操作不可恢复。")
+            confirm_col, cancel_col = st.columns(2)
+            with confirm_col:
+                if st.button("✅ 确认清空", key="confirm_clear_all_history_records", type="primary"):
+                    deleted_count = db.clear_all_records()
+                    st.session_state.confirm_clear_history = False
+                    st.success(f"✅ 已清空历史记录（删除 {deleted_count} 条）")
+                    st.rerun()
+            with cancel_col:
+                if st.button("❌ 取消", key="cancel_clear_all_history_records"):
+                    st.session_state.confirm_clear_history = False
+                    st.info("已取消清空操作")
+                    st.rerun()
+
+    st.markdown("---")
+
+    # 表头
+    h1, h2, h3, h4, h5, h6 = st.columns([1.2, 1.8, 2.2, 1.0, 1.1, 2.2])
+    h1.markdown("**股票代码**")
+    h2.markdown("**股票名称**")
+    h3.markdown("**分析时间**")
+    h4.markdown("**数据周期**")
+    h5.markdown("**投资评级**")
+    h6.markdown("**操作**")
+    st.markdown("---")
+
+    # 显示记录列表（表格行风格）
     for record in filtered_records:
-        # 根据评级设置颜色和图标
         rating = record.get('rating', '未知')
-        rating_color = {
-            "买入": "🟢",
-            "持有": "🟡",
-            "卖出": "🔴",
-            "强烈买入": "🟢",
-            "强烈卖出": "🔴"
-        }.get(rating, "⚪")
 
-        with st.expander(f"{rating_color} {record['stock_name']} ({record['symbol']}) - {record['analysis_date']}"):
-            col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+        c1, c2, c3, c4, c5, c6 = st.columns([1.2, 1.8, 2.2, 1.0, 1.1, 2.2])
+        c1.write(record.get('symbol', 'N/A'))
+        c2.write(record.get('stock_name', 'N/A'))
+        c3.write(record.get('analysis_date', 'N/A'))
+        c4.write(record.get('period', 'N/A'))
+        c5.write(rating)
 
-            with col1:
-                st.write(f"**股票代码:** {record['symbol']}")
-                st.write(f"**股票名称:** {record['stock_name']}")
+        op1, op2, op3 = c6.columns([1, 1, 1])
+        with op1:
+            if st.button("详情", key=f"view_{record['id']}"):
+                st.session_state.viewing_record_id = record['id']
 
-            with col2:
-                st.write(f"**分析时间:** {record['analysis_date']}")
-                st.write(f"**数据周期:** {record['period']}")
-                st.write(f"**投资评级:** **{rating}**")
+        with op2:
+            if st.button("监测", key=f"add_monitor_{record['id']}"):
+                st.session_state.add_to_monitor_id = record['id']
+                st.session_state.viewing_record_id = record['id']
 
-            with col3:
-                if st.button("👀 查看详情", key=f"view_{record['id']}"):
-                    st.session_state.viewing_record_id = record['id']
-
-            with col4:
-                if st.button("➕ 监测", key=f"add_monitor_{record['id']}"):
-                    st.session_state.add_to_monitor_id = record['id']
-                    st.session_state.viewing_record_id = record['id']
-
-            # 删除按钮（新增一行）
-            col5, _, _, _ = st.columns(4)
-            with col5:
-                if st.button("🗑️ 删除", key=f"delete_{record['id']}"):
-                    if db.delete_record(record['id']):
-                        st.success("✅ 记录已删除")
-                        st.rerun()
-                    else:
-                        st.error("❌ 删除失败")
+        with op3:
+            if st.button("删除", key=f"delete_{record['id']}"):
+                if db.delete_record(record['id']):
+                    st.success("✅ 记录已删除")
+                    st.rerun()
+                else:
+                    st.error("❌ 删除失败")
 
     # 查看详细记录
     if 'viewing_record_id' in st.session_state:

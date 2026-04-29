@@ -253,6 +253,89 @@ class MainForceBatchDatabase:
         conn.close()
         
         return affected_rows > 0
+
+    def delete_stock_record(self, record_id: int, symbol: str) -> bool:
+        """
+        从批次记录中删除单只股票结果
+
+        Args:
+            record_id: 批次记录ID
+            symbol: 股票代码
+
+        Returns:
+            是否删除成功
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT results_json, batch_count
+            FROM batch_analysis_history
+            WHERE id = ?
+        ''', (record_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            conn.close()
+            return False
+
+        try:
+            results = json.loads(row[0]) if row[0] else []
+        except Exception:
+            results = []
+
+        original_len = len(results)
+        filtered_results = [r for r in results if str(r.get('symbol', '')) != str(symbol)]
+
+        # 没有命中要删除的股票
+        if len(filtered_results) == original_len:
+            conn.close()
+            return False
+
+        # 若批次已无结果，直接删除整条批次记录
+        if not filtered_results:
+            cursor.execute('DELETE FROM batch_analysis_history WHERE id = ?', (record_id,))
+            affected = cursor.rowcount > 0
+            conn.commit()
+            conn.close()
+            return affected
+
+        # 重新统计成功/失败数量
+        success_count = sum(1 for r in filtered_results if bool(r.get('success', False)))
+        failed_count = len(filtered_results) - success_count
+        batch_count = len(filtered_results)
+
+        cursor.execute('''
+            UPDATE batch_analysis_history
+            SET results_json = ?, batch_count = ?, success_count = ?, failed_count = ?
+            WHERE id = ?
+        ''', (
+            json.dumps(filtered_results, ensure_ascii=False, default=str),
+            batch_count,
+            success_count,
+            failed_count,
+            record_id
+        ))
+
+        affected_rows = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return affected_rows > 0
+
+    def clear_all_history(self) -> int:
+        """
+        清空所有历史记录
+
+        Returns:
+            删除的记录数量
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM batch_analysis_history')
+        deleted_count = cursor.rowcount if cursor.rowcount is not None else 0
+        conn.commit()
+        conn.close()
+        return deleted_count
     
     def get_statistics(self) -> Dict:
         """
