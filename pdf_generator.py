@@ -19,6 +19,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 import io
 import tempfile
 import os
+from xml.sax.saxutils import escape
 
 def register_chinese_fonts():
     """注册中文字体 - 支持Windows和Linux系统"""
@@ -118,6 +119,28 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
         spaceAfter=6,
         alignment=TA_JUSTIFY
     )
+
+    # 表格单元格样式：开启自动换行，避免长文本被截断
+    table_cell_style = ParagraphStyle(
+        'TableCell',
+        parent=normal_style,
+        alignment=TA_LEFT,
+        spaceAfter=0,
+        leading=14,
+        wordWrap='CJK'
+    )
+
+    table_header_style = ParagraphStyle(
+        'TableHeader',
+        parent=table_cell_style,
+        fontName=chinese_font,
+        textColor=colors.whitesmoke
+    )
+
+    def as_cell_paragraph(value, is_header=False):
+        text = "N/A" if value is None else str(value)
+        text = escape(text).replace("\n", "<br/>")
+        return Paragraph(text, table_header_style if is_header else table_cell_style)
     
     # 开始构建PDF内容
     story = []
@@ -132,7 +155,7 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
     story.append(Paragraph("股票基本信息", heading_style))
     
     # 创建股票信息表格
-    stock_data = [
+    stock_data_raw = [
         ['项目', '值'],
         ['股票代码', stock_info.get('symbol', 'N/A')],
         ['股票名称', stock_info.get('name', 'N/A')],
@@ -144,18 +167,17 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
         ['市场', stock_info.get('market', 'N/A')],
         ['交易所', stock_info.get('exchange', 'N/A')]
     ]
+    stock_data = [[as_cell_paragraph(col, i == 0) for col in row] for i, row in enumerate(stock_data_raw)]
     
     stock_table = Table(stock_data, colWidths=[2*inch, 3*inch])
     stock_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), chinese_font),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('FONTNAME', (0, 1), (-1, -1), chinese_font),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
         ('GRID', (0, 0), (-1, -1), 1, colors.black)
     ]))
     
@@ -199,7 +221,7 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
     
     if isinstance(final_decision, dict) and "decision_text" not in final_decision:
         # JSON格式的决策
-        decision_data = [
+        decision_data_raw = [
             ['项目', '内容'],
             ['投资评级', final_decision.get('rating', '未知')],
             ['目标价位', str(final_decision.get('target_price', 'N/A'))],
@@ -212,18 +234,17 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
             ['信心度', f"{final_decision.get('confidence_level', 'N/A')}/10"],
             ['风险提示', final_decision.get('risk_warning', '无')]
         ]
+        decision_data = [[as_cell_paragraph(col, i == 0) for col in row] for i, row in enumerate(decision_data_raw)]
         
         decision_table = Table(decision_data, colWidths=[1.5*inch, 3.5*inch])
         decision_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), chinese_font),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
             ('BACKGROUND', (0, 1), (-1, -1), colors.lightblue),
-            ('FONTNAME', (0, 1), (-1, -1), chinese_font),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ]))
         
