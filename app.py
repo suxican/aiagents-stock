@@ -25,7 +25,7 @@ from news_flow_ui import display_news_flow_monitor
 
 # 页面配置
 st.set_page_config(
-    page_title="复合多AI智能体股票团队分析系统",
+    page_title="AI智能体股票团队分析系统",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -271,7 +271,7 @@ def main():
     # 顶部标题栏
     st.markdown("""
     <div class="top-nav">
-        <h1 class="nav-title">📈 复合多AI智能体股票团队分析系统</h1>
+        <h1 class="nav-title">📈 AI智能体股票团队分析系统</h1>
         <p class="nav-subtitle">基于DeepSeek的专业量化投资分析平台 | Multi-Agent Stock Analysis System</p>
     </div>
     """, unsafe_allow_html=True)
