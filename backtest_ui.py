@@ -16,7 +16,7 @@ def _pct(value: float) -> str:
 
 def display_backtest():
     st.markdown("## 策略回测")
-    st.caption("使用确定性规则生成信号，回测按 T 日信号、T+1 开盘成交，计入滑点和交易成本。")
+    st.caption("使用确定性规则生成信号，买入按 T 日信号、T+1 开盘成交；止盈止损可选择盘中触发或收盘确认，计入滑点和交易成本。")
     st.markdown("---")
 
     with st.form("backtest_form"):
@@ -46,11 +46,28 @@ def display_backtest():
             with c4:
                 commission_rate = st.number_input("佣金率", value=0.0003, step=0.0001, format="%.4f")
             stamp_tax_rate = st.number_input("卖出印花税/费用率", value=0.0005, step=0.0001, format="%.4f")
+            position_sizing_label = st.selectbox(
+                "仓位计算基准",
+                ["当前权益复利", "初始资金固定"],
+                index=0,
+                help="当前权益复利会随账户权益变化调整单次仓位；初始资金固定便于控制固定敞口。",
+            )
+            exit_execution_label = st.selectbox(
+                "止盈止损触发",
+                ["盘中高低价触发", "收盘确认后次日开盘"],
+                index=0,
+                help="盘中触发使用日内高低价模拟，若同日同时触发止盈止损，按保守原则先止损。",
+            )
+            annualization_label = st.selectbox(
+                "年化口径",
+                ["252个交易日", "365个自然日"],
+                index=0,
+            )
 
         submitted = st.form_submit_button("运行回测", type="primary", width="stretch")
 
     if not submitted:
-        st.info("当前内置策略：Close > MA20、MA5 > MA20、RSI处于买入区间、MACD强于信号线、量比达标时形成买入评分；持仓后按止损、止盈、持有期、跌破MA20、RSI过热退出。")
+        st.info("当前内置策略：Close > MA20、MA5 > MA20、RSI处于买入区间、MACD强于信号线、量比达标时形成买入评分；持仓后按止损、止盈、持有期、跌破MA20、RSI过热退出。交易明细中的单笔盈亏已同时扣除买入费和卖出费。")
         return
 
     config = SignalConfig(
@@ -68,6 +85,9 @@ def display_backtest():
         commission_rate=commission_rate,
         stamp_tax_rate=stamp_tax_rate,
         slippage_pct=slippage_pct,
+        position_sizing="current_equity" if position_sizing_label == "当前权益复利" else "initial_capital",
+        exit_execution="intraday" if exit_execution_label == "盘中高低价触发" else "next_open",
+        annualization_days=252 if annualization_label == "252个交易日" else 365,
     )
 
     with st.spinner("正在获取数据并执行回测..."):
