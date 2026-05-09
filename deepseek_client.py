@@ -1,17 +1,106 @@
 import openai
 import json
-from typing import Dict, List, Any, Optional
+import requests
+from typing import Dict, List, Any, Optional, Union
 import config
+
+
+def _format_completion_message_dict(message: Dict[str, Any]) -> str:
+    """从 OpenAI 兼容 JSON 的 message 对象组装文本。"""
+    result = ""
+    reasoning = message.get("reasoning_content") or message.get("reasoning")
+    if reasoning:
+        result += f"【推理过程】\n{reasoning}\n\n"
+    content = message.get("content") or ""
+    if content:
+        result += content
+    return result
+
+
+def _text_from_openai_completion_payload(data: Union[dict, str, Any]) -> Optional[str]:
+    """将字典或 JSON 字符串解析为助手回复文本；无法识别时返回 None。"""
+    if data is None:
+        return None
+    if isinstance(data, str):
+        s = data.strip()
+        if not s:
+            return None
+        try:
+            data = json.loads(s)
+        except json.JSONDecodeError:
+            # 纯文本响应（少数网关）
+            return s if s else None
+    if not isinstance(data, dict):
+        return None
+    err = data.get("error")
+    if err:
+        if isinstance(err, dict):
+            return f"API错误: {err.get('message', json.dumps(err, ensure_ascii=False))}"
+        return f"API错误: {err}"
+    choices = data.get("choices")
+    if not choices:
+        return "API返回空响应"
+    first = choices[0] if isinstance(choices, list) else None
+    if not isinstance(first, dict):
+        return "API返回空响应"
+    msg = first.get("message")
+    if isinstance(msg, dict):
+        text = _format_completion_message_dict(msg)
+        return text if text else "API返回空响应"
+    # 个别网关直接返回 text / delta
+    if first.get("text"):
+        return str(first["text"])
+    return "API返回空响应"
+
+
+def _message_to_text(message: Any) -> str:
+    """将 SDK 返回的 message 对象转为与 JSON 路径一致的文本。"""
+    result = ""
+    if hasattr(message, "reasoning_content") and message.reasoning_content:
+        result += f"【推理过程】\n{message.reasoning_content}\n\n"
+    if getattr(message, "content", None):
+        result += message.content
+    return result
+
 
 class DeepSeekClient:
     """DeepSeek API客户端"""
     
     def __init__(self, model=None):
         self.model = model or config.DEFAULT_MODEL_NAME
+        self._base_url = config.DEEPSEEK_BASE_URL
         self.client = openai.OpenAI(
             api_key=config.DEEPSEEK_API_KEY,
-            base_url=config.DEEPSEEK_BASE_URL
+            base_url=self._base_url
         )
+
+    def _call_api_http(self, messages: List[Dict[str, str]], model_to_use: str,
+                       temperature: float, max_tokens: int) -> str:
+        """使用原始 HTTP 调用 OpenAI 兼容接口（适配部分第三方中转/SDK 解析异常）。"""
+        url = f"{self._base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model_to_use,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=600)
+        try:
+            data = resp.json()
+        except ValueError:
+            resp.raise_for_status()
+            return f"API调用失败: 非JSON响应 ({resp.status_code}) {resp.text[:500]}"
+        if resp.status_code >= 400:
+            text = _text_from_openai_completion_payload(data)
+            if text and text.startswith("API错误"):
+                return text
+            return f"API调用失败: HTTP {resp.status_code} {resp.text[:500]}"
+        text = _text_from_openai_completion_payload(data)
+        return text if text else "API返回空响应"
         
     def call_api(self, messages: List[Dict[str, str]], model: Optional[str] = None, 
                  temperature: float = 0.7, max_tokens: int = 2000) -> str:
@@ -30,26 +119,41 @@ class DeepSeekClient:
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            
+
+            # 部分中转网关/SDK 组合下 create 可能返回非 ChatCompletion（如原始字符串）
+            if isinstance(response, str):
+                parsed = _text_from_openai_completion_payload(response)
+                if parsed and not parsed.startswith("API错误"):
+                    return parsed
+                return self._call_api_http(messages, model_to_use, temperature, max_tokens)
+
+            if not hasattr(response, "choices"):
+                raw = getattr(response, "model_dump", None)
+                if callable(raw):
+                    parsed = _text_from_openai_completion_payload(raw())
+                    if parsed:
+                        return parsed
+                return self._call_api_http(messages, model_to_use, temperature, max_tokens)
+
             # 处理 reasoner 模型的响应
             message = response.choices[0].message
             
             # reasoner 模型可能包含 reasoning_content（推理过程）和 content（最终答案）
             # 我们返回完整内容，包括推理过程（如果有的话）
-            result = ""
-            
-            # 检查是否有推理内容
-            if hasattr(message, 'reasoning_content') and message.reasoning_content:
-                result += f"【推理过程】\n{message.reasoning_content}\n\n"
-            
-            # 添加最终内容
-            if message.content:
-                result += message.content
+            result = _message_to_text(message)
             
             return result if result else "API返回空响应"
-            
+
+        except (AttributeError, TypeError, IndexError) as e:
+            try:
+                return self._call_api_http(messages, model_to_use, temperature, max_tokens)
+            except Exception as e2:
+                return f"API调用失败: {str(e)} | HTTP备用: {str(e2)}"
         except Exception as e:
-            return f"API调用失败: {str(e)}"
+            try:
+                return self._call_api_http(messages, model_to_use, temperature, max_tokens)
+            except Exception:
+                return f"API调用失败: {str(e)}"
     
     def technical_analysis(self, stock_info: Dict, stock_data: Any, indicators: Dict) -> str:
         """技术面分析"""
