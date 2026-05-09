@@ -23,6 +23,7 @@ from longhubang_ui import display_longhubang
 from smart_monitor_ui import smart_monitor_ui
 from news_flow_ui import display_news_flow_monitor
 from emotion_heat_ui import display_emotion_heat
+from backtest_ui import display_backtest
 
 # 页面配置
 st.set_page_config(
@@ -287,7 +288,7 @@ def main():
         if st.button("🏠 股票分析", width='stretch', key="nav_home", help="返回首页，进行单只股票的深度分析"):
             # 清除所有功能页面标志
             for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                       'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock', 'show_emotion_heat']:
+                       'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock', 'show_emotion_heat', 'show_backtest']:
                 if key in st.session_state:
                     del st.session_state[key]
 
@@ -388,6 +389,16 @@ def main():
                 st.session_state.show_portfolio = True
                 for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
                            'show_sector_strategy', 'show_longhubang', 'show_smart_monitor', 'show_low_price_bull', 'show_news_flow', 'show_macro_analysis', 'show_emotion_heat']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+
+            if st.button("策略回测", width='stretch', key="nav_backtest", help="可验证、可复现的交易信号回测"):
+                st.session_state.show_backtest = True
+                for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
+                           'show_sector_strategy', 'show_longhubang', 'show_smart_monitor',
+                           'show_portfolio', 'show_low_price_bull', 'show_news_flow',
+                           'show_macro_analysis', 'show_emotion_heat', 'show_macro_cycle',
+                           'show_value_stock', 'show_small_cap', 'show_profit_growth']:
                     if key in st.session_state:
                         del st.session_state[key]
 
@@ -593,6 +604,10 @@ def main():
     # 检查是否显示环境配置
     if 'show_config' in st.session_state and st.session_state.show_config:
         display_config_manager()
+        return
+
+    if 'show_backtest' in st.session_state and st.session_state.show_backtest:
+        display_backtest()
         return
 
     # 主界面
@@ -2202,6 +2217,7 @@ def display_config_manager():
         st.markdown("硅基流动:https://api.siliconflow.cn/v1")
         st.markdown("火山引擎:https://ark.cn-beijing.volces.com/api/v3")
         st.markdown("阿里:https://dashscope.aliyuncs.com/compatible-mode/v1")
+        st.markdown("智汇:https://cc.580ai.net/v1")
 
     # DeepSeek API Key
         api_key_info = config_info["DEEPSEEK_API_KEY"]
