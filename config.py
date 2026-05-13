@@ -1,5 +1,8 @@
 import os
 from dotenv import load_dotenv
+from time_utils import configure_logging_timezone
+
+configure_logging_timezone()
 
 # 加载环境变量（override=True 强制覆盖已存在的环境变量）
 load_dotenv(override=True)

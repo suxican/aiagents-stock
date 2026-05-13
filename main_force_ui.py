@@ -6,7 +6,6 @@
 
 import streamlit as st
 from datetime import datetime, timedelta
-from main_force_analysis import MainForceAnalyzer
 from main_force_pdf_generator import display_report_download_section
 from main_force_history_ui import display_batch_history
 import pandas as pd
@@ -133,6 +132,8 @@ def display_main_force_selector():
     if st.button("🚀 开始主力选股", type="primary", width='content'):
 
         with st.spinner("正在获取数据并分析，这可能需要几分钟..."):
+
+            from main_force_analysis import MainForceAnalyzer
 
             # 创建分析器（使用默认模型）
             analyzer = MainForceAnalyzer()

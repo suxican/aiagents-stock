@@ -8,6 +8,9 @@ import time
 import base64
 import os
 import config
+from time_utils import configure_logging_timezone
+
+configure_logging_timezone()
 
 from stock_data import StockDataFetcher
 from ai_agents import StockAnalysisAgents
@@ -24,6 +27,7 @@ from smart_monitor_ui import smart_monitor_ui
 from news_flow_ui import display_news_flow_monitor
 from emotion_heat_ui import display_emotion_heat
 from backtest_ui import display_backtest
+from sector_overview_ui import display_sector_overview
 
 # 页面配置
 st.set_page_config(
@@ -288,7 +292,7 @@ def main():
         if st.button("🏠 股票分析", width='stretch', key="nav_home", help="返回首页，进行单只股票的深度分析"):
             # 清除所有功能页面标志
             for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                       'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock', 'show_emotion_heat', 'show_backtest']:
+                       'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock', 'show_emotion_heat', 'show_sector_overview', 'show_backtest']:
                 if key in st.session_state:
                     del st.session_state[key]
 
@@ -298,6 +302,16 @@ def main():
                        'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull',
                        'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock',
                        'show_small_cap', 'show_profit_growth', 'show_smart_monitor']:
+                if key in st.session_state:
+                    del st.session_state[key]
+
+        if st.button("📌 板块概览", width='stretch', key="nav_sector_overview", help="复盘强势板块、涨停主线与最近板块轮动"):
+            st.session_state.show_sector_overview = True
+            for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
+                       'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull',
+                       'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock',
+                       'show_small_cap', 'show_profit_growth', 'show_smart_monitor', 'show_emotion_heat',
+                       'show_backtest']:
                 if key in st.session_state:
                     del st.session_state[key]
 
@@ -608,6 +622,10 @@ def main():
 
     if 'show_backtest' in st.session_state and st.session_state.show_backtest:
         display_backtest()
+        return
+
+    if 'show_sector_overview' in st.session_state and st.session_state.show_sector_overview:
+        display_sector_overview()
         return
 
     # 主界面
