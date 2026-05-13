@@ -28,6 +28,7 @@ from news_flow_ui import display_news_flow_monitor
 from emotion_heat_ui import display_emotion_heat
 from backtest_ui import display_backtest
 from sector_overview_ui import display_sector_overview
+from fibonacci_ui import display_fibonacci_tool
 
 # 页面配置
 st.set_page_config(
@@ -292,7 +293,7 @@ def main():
         if st.button("🏠 股票分析", width='stretch', key="nav_home", help="返回首页，进行单只股票的深度分析"):
             # 清除所有功能页面标志
             for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                       'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock', 'show_emotion_heat', 'show_sector_overview', 'show_backtest']:
+                       'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_cycle', 'show_macro_analysis', 'show_value_stock', 'show_emotion_heat', 'show_sector_overview', 'show_backtest', 'show_fibonacci']:
                 if key in st.session_state:
                     del st.session_state[key]
 
@@ -432,11 +433,28 @@ def main():
 
         st.markdown("---")
 
+        # 🧰 实用工具
+        with st.expander("🧰 实用工具", expanded=True):
+            st.markdown("**常用技术分析与辅助工具**")
+
+            if st.button("📐 斐波那契", width='stretch', key="nav_fibonacci", help="查看个股斐波那契回撤位与扩展目标位"):
+                st.session_state.show_fibonacci = True
+                for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
+                           'show_sector_strategy', 'show_longhubang', 'show_smart_monitor',
+                           'show_portfolio', 'show_low_price_bull', 'show_news_flow',
+                           'show_macro_analysis', 'show_emotion_heat', 'show_macro_cycle',
+                           'show_value_stock', 'show_small_cap', 'show_profit_growth',
+                           'show_backtest', 'show_sector_overview']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+
+        st.markdown("---")
+
         # 📖 历史记录
         if st.button("📖 历史记录", width='stretch', key="nav_history", help="查看历史分析记录"):
             st.session_state.show_history = True
             for key in ['show_monitor', 'show_longhubang', 'show_portfolio', 'show_config',
-                       'show_main_force', 'show_sector_strategy', 'show_low_price_bull', 'show_news_flow', 'show_macro_analysis', 'show_emotion_heat']:
+                       'show_main_force', 'show_sector_strategy', 'show_low_price_bull', 'show_news_flow', 'show_macro_analysis', 'show_emotion_heat', 'show_fibonacci']:
                 if key in st.session_state:
                     del st.session_state[key]
 
@@ -444,7 +462,7 @@ def main():
         if st.button("⚙️ 环境配置", width='stretch', key="nav_config", help="系统设置与API配置"):
             st.session_state.show_config = True
             for key in ['show_history', 'show_monitor', 'show_main_force', 'show_sector_strategy',
-                       'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_analysis', 'show_emotion_heat']:
+                       'show_longhubang', 'show_portfolio', 'show_low_price_bull', 'show_news_flow', 'show_macro_analysis', 'show_emotion_heat', 'show_fibonacci']:
                 if key in st.session_state:
                     del st.session_state[key]
 
@@ -626,6 +644,10 @@ def main():
 
     if 'show_sector_overview' in st.session_state and st.session_state.show_sector_overview:
         display_sector_overview()
+        return
+
+    if 'show_fibonacci' in st.session_state and st.session_state.show_fibonacci:
+        display_fibonacci_tool()
         return
 
     # 主界面
